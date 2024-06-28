@@ -1,13 +1,17 @@
 extern crate af_packet;
+extern crate nom;
 extern crate num_cpus;
 extern crate pktparse;
-extern crate nom;
 
+use nom::IResult;
+use smoltcp::wire::IpAddress;
 use std::env;
 use std::thread;
-use nom::IResult;
-use pktparse::ip::IPProtocol;
-use pktparse::{ethernet, ipv4, tcp};
+// use pktparse::ip;
+// use pktparse::ip::IPProtocol;
+// use pktparse::{ethernet, ipv4, tcp};
+use smoltcp::phy::ChecksumCapabilities;
+use smoltcp::wire::{IpProtocol, Ipv4Packet, Ipv4Repr, TcpPacket, TcpRepr};
 
 // use af_packet::tpacket3::TpacketStatsV3;
 
@@ -27,34 +31,62 @@ fn main() {
             loop {
                 let mut block = ring.get_block();
                 for packet in block.get_raw_packets() {
+                    //    let _res = ethernet::parse_ethernet_frame(&packet.data[82..]).and_then(|(remainder, _frame)|  {
+                    //         if _frame.ethertype == ethernet::EtherType::IPv4 {
+                    //             let _ip_data=  ipv4::parse_ipv4_header(&remainder).and_then(|(remainder, iphdr)| {
+                    //                 if iphdr.protocol == IPProtocol::TCP {
+                    //                     let _tcp = tcp::parse_tcp_header(&remainder).and_then(|(remainder, tcphdr)| {
+                    //                         Ok(())
+                    //                     });
+                    //                 }
+                    //                 Ok((remainder, iphdr))
+                    //             });
+                    //         }
+                    //         Ok((remainder, _frame))
+                    //     });
 
-                //    let _res = ethernet::parse_ethernet_frame(&packet.data[82..]).and_then(|(remainder, _frame)|  {
-                //         if _frame.ethertype == ethernet::EtherType::IPv4 {
-                //             let _ip_data=  ipv4::parse_ipv4_header(&remainder).and_then(|(remainder, iphdr)| {
-                //                 if iphdr.protocol == IPProtocol::TCP {
-                //                     let _tcp = tcp::parse_tcp_header(&remainder).and_then(|(remainder, tcphdr)| {
-                //                         Ok(())
-                //                     });
-                //                 }
-                //                 Ok((remainder, iphdr))
-                //             });
-                //         }
-                //         Ok((remainder, _frame))
-                //     }); 
+                    // if let IResult::Ok((remainder_, frame)) = ethernet::parse_ethernet_frame(&packet.data[82..]) {
+                    //     if frame.ethertype == ethernet::EtherType::IPv4 {
+                    //         if let IResult::Ok((remainder_, iphdr)) = ipv4::parse_ipv4_header(&remainder_) {
+                    //             if iphdr.protocol == IPProtocol::TCP {
+                    //                 if let IResult::Ok((remainder_, tcphdr)) = tcp::parse_tcp_header(&remainder_) {
+                    //                     println!("{:?}", tcphdr);
+                    //                     println!("payload len: {}", remainder_.len());
+                    //                 }
 
-                    if let IResult::Ok((remainder_, frame)) = ethernet::parse_ethernet_frame(&packet.data[82..]) {
-                        if frame.ethertype == ethernet::EtherType::IPv4 {
-                            if let IResult::Ok((remainder_, iphdr)) = ipv4::parse_ipv4_header(&remainder_) {
-                                if iphdr.protocol == IPProtocol::TCP {
-                                    if let IResult::Ok((remainder_, tcphdr)) = tcp::parse_tcp_header(&remainder_) {
-                                        println!("{:?}", tcphdr);
-                                        print!("payload len: {}", remainder_.len());
-                                    }
+                    //             }
+                    //         }
+                    //     }
+                    // }
+                    let packet = Ipv4Packet::new_checked(&packet.data).expect("truncated packet");
+                    println!("protocol: {}", packet.next_header());
 
-                                }
-                            }
-                        }  
+                    let parsed = Ipv4Repr::parse(&packet, &ChecksumCapabilities::default());
+                                        
+                    let payload = packet.payload();
+                    let tcp = TcpPacket::new_checked(&payload).expect("truncated packet");
+                    let src_addr =  IpAddress::v4(0,0,0,0);
+                    let dst_addr =  IpAddress::v4(0,0,0,0);
+
+                    let parsed_tcp = TcpRepr::parse(&tcp, &src_addr, &dst_addr, &ChecksumCapabilities::default());
+                    match parsed_tcp {
+                        Ok(seg) => {
+                            println!("tcp flag: {:?}", seg.control);
+                            
+                        }
+                        Err(_) => todo!(),
                     }
+
+                    // Ipv4Packet::new_checked(packet.data).and_then(|ipv4_packet| Ok({
+                    //     ipv4_packet.payload();
+                    //     ipv4_packet.next_header();
+                    //     let p = Ipv4Repr::parse(&ipv4_packet, &ChecksumCapabilities::default());
+                    //     p.and_then(|ipv4_repr: Ipv4Repr|Ok({
+                    //         if ipv4_repr.next_header == IpProtocol::Tcp {
+
+                    //         }
+                    //     }));
+                    // }));
                 }
                 block.mark_as_consumed();
             }
@@ -70,8 +102,6 @@ fn main() {
             let ring_stats = af_packet::rx::get_rx_statistics(*fd).unwrap();
             stats.0 += ring_stats.tp_drops as u64;
             stats.1 += ring_stats.tp_packets as u64;
-
         }
     }
-    println!("hello world");
 }
