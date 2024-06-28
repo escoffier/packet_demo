@@ -4,6 +4,7 @@ extern crate num_cpus;
 extern crate pktparse;
 
 use nom::IResult;
+use smoltcp::wire::EthernetProtocol;
 use smoltcp::wire::IpAddress;
 use std::env;
 use std::thread;
@@ -11,7 +12,7 @@ use std::thread;
 // use pktparse::ip::IPProtocol;
 // use pktparse::{ethernet, ipv4, tcp};
 use smoltcp::phy::ChecksumCapabilities;
-use smoltcp::wire::{IpProtocol, Ipv4Packet, Ipv4Repr, TcpPacket, TcpRepr};
+use smoltcp::wire::{IpProtocol,EthernetFrame,EthernetRepr, Ipv4Packet, Ipv4Repr, TcpPacket, TcpRepr};
 
 // use af_packet::tpacket3::TpacketStatsV3;
 
@@ -58,23 +59,33 @@ fn main() {
                     //         }
                     //     }
                     // }
-                    let packet = Ipv4Packet::new_checked(&packet.data).expect("truncated packet");
-                    println!("protocol: {}", packet.next_header());
+                    let frame = EthernetFrame::new_checked(&packet.data).expect("eth frame");
+                    let parsedFrame = EthernetRepr::parse(&frame);
+                    let mut parsedFrame = match parsedFrame {
+                        Ok(f) => f,
+                        Err(e) => return,
+                    }; 
+                    println!("eth header {:?}", parsedFrame);
 
-                    let parsed = Ipv4Repr::parse(&packet, &ChecksumCapabilities::default());
-                                        
-                    let payload = packet.payload();
-                    let tcp = TcpPacket::new_checked(&payload).expect("truncated packet");
-                    let src_addr =  IpAddress::v4(0,0,0,0);
-                    let dst_addr =  IpAddress::v4(0,0,0,0);
+                    if frame.ethertype() == EthernetProtocol::Ipv4 {
+                        let paylaod = frame.payload();
+                        let ip_packet = Ipv4Packet::new_checked(&paylaod).expect("truncated packet");
+                        println!("protocol: {}", ip_packet.next_header());
+                        let parsed: Result<Ipv4Repr, smoltcp::wire::Error> = Ipv4Repr::parse(&ip_packet, &ChecksumCapabilities::default());
+                        println!("ip header {:?}", parsed);
+                        let payload = ip_packet.payload();
 
-                    let parsed_tcp = TcpRepr::parse(&tcp, &src_addr, &dst_addr, &ChecksumCapabilities::default());
-                    match parsed_tcp {
-                        Ok(seg) => {
-                            println!("tcp flag: {:?}", seg.control);
-                            
+                        let tcp = TcpPacket::new_checked(&payload).expect("truncated packet");
+                        let src_addr =  IpAddress::v4(0,0,0,0);
+                        let dst_addr =  IpAddress::v4(0,0,0,0);
+    
+                        let parsed_tcp = TcpRepr::parse(&tcp, &src_addr, &dst_addr, &ChecksumCapabilities::default());
+                        match parsed_tcp {
+                            Ok(seg) => {
+                                println!("tcp flag: {:?}", seg.control);
+                            }
+                            Err(_) => todo!(),
                         }
-                        Err(_) => todo!(),
                     }
 
                     // Ipv4Packet::new_checked(packet.data).and_then(|ipv4_packet| Ok({
