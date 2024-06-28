@@ -49,6 +49,7 @@ fn main() {
                     if let IResult::Ok((remainder_, frame)) = ethernet::parse_ethernet_frame(&packet.data[82..]) {
                         if frame.ethertype == ethernet::EtherType::IPv4 {
                             if let IResult::Ok((remainder_, iphdr)) = ipv4::parse_ipv4_header(&remainder_) {
+                                println!("{:?}", iphdr);
                                 if iphdr.protocol == IPProtocol::TCP {
                                     if let IResult::Ok((remainder_, tcphdr)) = tcp::parse_tcp_header(&remainder_) {
                                         println!("{:?}", tcphdr);
